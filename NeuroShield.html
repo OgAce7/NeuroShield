@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NeuroShield — Phishing Detection</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&family=DM+Serif+Display&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body,#root{height:100%;width:100%;overflow:hidden;}
+  body{background:#0e0e0d;font-family:'DM Sans',sans-serif;}
+  ::-webkit-scrollbar{width:4px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:#4a4843;border-radius:2px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}
+  .fade-in{animation:fadeIn 0.22s ease forwards;}
+  textarea,input{caret-color:#e8d5a3;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+
+const T={
+  bg:"#0e0e0d",surface:"#141413",card:"#1a1918",
+  border:"rgba(255,255,255,0.07)",borderMd:"rgba(255,255,255,0.13)",
+  text:"#f0ede8",muted:"#7a776f",subtle:"#4a4843",
+  accent:"#e8d5a3",accentDim:"rgba(232,213,163,0.1)",
+  danger:"#e05252",dangerBg:"rgba(224,82,82,0.1)",
+  warn:"#d4883a",warnBg:"rgba(212,136,58,0.1)",
+  safe:"#5aab6e",safeBg:"rgba(90,171,110,0.1)",
+  info:"#5a8fd4",infoBg:"rgba(90,143,212,0.08)",
+};
+
+function Icon({path,size=15,stroke="currentColor",sw=1.35}){
+  return <svg width={size} height={size} viewBox="0 0 16 16" fill="none">
+    <path d={path} stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>;
+}
+
+const ICONS={
+  grid:"M1 1h5.5v5.5H1zm8.5 0H15v5.5H9.5zM1 9.5h5.5V15H1zm8.5 0H15V15H9.5z",
+  mail:"M1.5 4a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zm0 0 6.5 4.5L14.5 4",
+  link:"M6.5 5.5H4a2.5 2.5 0 0 0 0 5h1m4.5-5H12a2.5 2.5 0 0 1 0 5h-1M5.5 8h5",
+  book:"M3 2h8l2 2v10H3zm0 0v12M6.5 6h4M6.5 9h4",
+  upload:"M8 11V3m-3 3 3-3 3 3M2.5 13.5h11",
+  eye:"M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5zm7-2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z",
+  check:"M3 8l3.5 3.5L13 4.5",
+};
+
+function Badge({label,variant="neutral",size="sm"}){
+  const C={
+    phishing:{bg:T.dangerBg,color:T.danger,bd:"rgba(224,82,82,0.2)"},
+    suspicious:{bg:T.warnBg,color:T.warn,bd:"rgba(212,136,58,0.2)"},
+    safe:{bg:T.safeBg,color:T.safe,bd:"rgba(90,171,110,0.2)"},
+    info:{bg:T.infoBg,color:T.info,bd:"rgba(90,143,212,0.2)"},
+    neutral:{bg:"rgba(255,255,255,0.05)",color:T.muted,bd:T.border},
+  };
+  const c=C[variant]||C.neutral;
+  return <span style={{display:"inline-flex",alignItems:"center",padding:size==="sm"?"2px 7px":"4px 11px",borderRadius:4,fontSize:size==="sm"?10.5:12,fontWeight:500,background:c.bg,color:c.color,border:`0.5px solid ${c.bd}`,flexShrink:0,letterSpacing:"0.02em",fontFamily:"'DM Sans',sans-serif"}}>{label}</span>;
+}
+
+function ScoreRing({score,size=76}){
+  const r=size*0.37,circ=2*Math.PI*r,dash=(score/100)*circ;
+  const color=score>=65?T.danger:score>=35?T.warn:T.safe;
+  return <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{flexShrink:0}}>
+    <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={T.border} strokeWidth={size*0.085}/>
+    <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={size*0.085}
+      strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+      transform={`rotate(-90 ${size/2} ${size/2})`}
+      style={{transition:"stroke-dasharray 0.9s cubic-bezier(.4,0,.2,1)"}}/>
+    <text x="50%" y="53%" dominantBaseline="central" textAnchor="middle"
+      fontSize={size*0.22} fontWeight="500" fill={color} fontFamily="'DM Mono',monospace">{score}</text>
+  </svg>;
+}
+
+function MiniBar({value,max=100,color=T.accent}){
+  return <div style={{flex:1,height:4,background:T.border,borderRadius:2,overflow:"hidden"}}>
+    <div style={{width:`${Math.min(value,max)}%`,height:"100%",background:color,borderRadius:2,transition:"width 0.7s cubic-bezier(.4,0,.2,1)"}}/>
+  </div>;
+}
+
+function Spinner(){
+  return <div style={{width:14,height:14,border:`1.5px solid ${T.border}`,borderTopColor:T.accent,borderRadius:"50%",animation:"spin 0.65s linear infinite"}}/>;
+}
+
+/* ── Feature analysis ── */
+const SUSPICIOUS_KW=["login","signin","verify","update","secure","account","banking","paypal","amazon","google","apple","microsoft","ebay","netflix","password","credential","confirm","wallet","urgent","free","win","prize","click","support"];
+const RISKY_TLDS=[".tk",".ml",".ga",".cf",".gq",".xyz",".top",".club",".info",".online",".site",".buzz"];
+const BRANDS=["paypal","amazon","google","apple","microsoft","facebook","instagram","twitter","netflix","ebay","chase","hsbc","dhl","fedex","ups","wellsfargo","bankofamerica","citibank"];
+const KNOWN_DOMAINS=["gmail.com","yahoo.com","outlook.com","github.com","microsoft.com","apple.com","amazon.com","paypal.com","google.com","linkedin.com","stackoverflow.com"];
+
+function analyseUrl(url){
+  const low=url.toLowerCase();
+  let score=0;const indicators=[];
+  if(!url.startsWith("https")){score+=25;indicators.push({name:"No HTTPS",danger:true});}
+  if(/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(url)){score+=30;indicators.push({name:"IP address in URL",danger:true});}
+  if(RISKY_TLDS.some(t=>low.includes(t))){score+=20;indicators.push({name:"Risky TLD",danger:true});}
+  const kw=SUSPICIOUS_KW.filter(k=>low.includes(k));
+  if(kw.length){score+=Math.min(kw.length*5,20);indicators.push({name:`${kw.length} suspicious keyword${kw.length>1?"s":""}`,danger:true});}
+  const dots=(url.match(/\./g)||[]).length;
+  if(dots>=4){score+=10;indicators.push({name:"Excessive subdomains",danger:true});}
+  if(low.includes("redirect")||low.includes("url=")){score+=10;indicators.push({name:"Redirect parameter",danger:true});}
+  if(/%[0-9a-f]{2}/i.test(url)){score+=5;indicators.push({name:"Hex encoding",danger:true});}
+  let hostname="";try{hostname=new URL(url.startsWith("http")?url:"http://"+url).hostname;}catch{}
+  const brand=BRANDS.find(b=>hostname.includes(b)&&!KNOWN_DOMAINS.includes(hostname));
+  if(brand){score+=15;indicators.push({name:`${brand} impersonated`,danger:true});}
+  score=Math.min(Math.round(score),100);
+  const label=score>=65?"phishing":score>=35?"suspicious":"safe";
+  if(score<35){indicators.push({name:"HTTPS secure",danger:false},{name:"Clean domain",danger:false});}
+  return{score,label,indicators,hostname:hostname||url.slice(0,40)};
+}
+
+function analyseEmailText(raw){
+  const lines=raw.split("\n");
+  let from="",to="",subject="",date="",body="",inBody=false;
+  for(const line of lines){
+    if(!inBody){
+      if(/^from:/i.test(line))from=line.replace(/^from:\s*/i,"").trim();
+      else if(/^to:/i.test(line))to=line.replace(/^to:\s*/i,"").trim();
+      else if(/^subject:/i.test(line))subject=line.replace(/^subject:\s*/i,"").trim();
+      else if(/^date:/i.test(line))date=line.replace(/^date:\s*/i,"").trim();
+      else if(line.trim()==="")inBody=true;
+    }else body+=line+"\n";
+  }
+  if(!from&&!subject)body=raw;
+  const urls=[...new Set([...raw.matchAll(/https?:\/\/[^\s<>"']+/gi)].map(m=>m[0]))];
+  const senderDomain=(from.match(/@([^\s>]+)/)?.[1]||"").toLowerCase();
+  let senderScore=0;
+  if(RISKY_TLDS.some(t=>senderDomain.endsWith(t.replace(".",""))||("."+senderDomain).endsWith(t)))senderScore+=35;
+  const brandMatch=BRANDS.find(b=>senderDomain.includes(b));
+  if(brandMatch&&!KNOWN_DOMAINS.includes(senderDomain))senderScore+=30;
+  const urgKw=["urgent","verify","suspend","limited","alert","action","confirm","immediately","expire","warning"];
+  const subKw=urgKw.filter(k=>subject.toLowerCase().includes(k));
+  const subjectScore=Math.min(subKw.length*12,36);
+  const bodyPhrases=["click here","verify your","confirm your","your account","suspended","limited","24 hours","immediately","enter your","password","banking"];
+  const bodyKw=bodyPhrases.filter(k=>body.toLowerCase().includes(k));
+  const bodyScore=Math.min(bodyKw.length*8,32);
+  const urlResults=urls.map(u=>({url:u,...analyseUrl(u)}));
+  const maxUrlScore=urlResults.length?Math.max(...urlResults.map(r=>r.score)):0;
+  const urlContrib=Math.round(maxUrlScore*0.35);
+  const finalScore=Math.min(Math.round(senderScore*0.35+subjectScore*0.15+bodyScore*0.15+urlContrib),100);
+  const label=finalScore>=65?"phishing":finalScore>=35?"suspicious":"safe";
+  return{from,to,subject,date,body:body.trim(),urls,urlResults,finalScore,label,senderScore,subjectScore:Math.round(subjectScore),bodyScore:Math.round(bodyScore),urlContrib,senderDomain,brandMatch,subKw,bodyKw};
+}
+
+/* ── Demo content ── */
+const DEMO_EMAILS=[
+`From: PayPal Security <support@paypa1-secure.tk>
+To: customer@example.com
+Subject: Urgent: Your PayPal account has been limited
+Date: Mon, 17 Mar 2026 09:14:22 +0000
+
+Dear Valued Customer,
+
+We have noticed unusual activity on your PayPal account. To protect your account, we have temporarily limited your access.
+
+Please click the link below to verify your identity and restore full access within 24 hours:
+
+http://paypa1-secure.tk/verify?user=customer&token=abc123def456
+
+If you do not verify within 24 hours, your account will be permanently suspended.
+
+Contact support: http://paypa1-secure.tk/support?redirect=http://evil.ru
+
+Do not ignore this email. Act immediately.
+
+PayPal Security Team`,
+`From: GitHub <noreply@github.com>
+To: developer@company.com
+Subject: [NeuroShield] Pull request #14 merged
+Date: Mon, 17 Mar 2026 08:02:11 +0000
+
+Hi developer,
+
+Your pull request "feat: add batch prediction endpoint" was successfully merged into main.
+
+View merge: https://github.com/neuroshield/neuroshield/pull/14
+
+The CI pipeline passed all checks (3/3).
+
+GitHub, Inc.`
+];
+
+const SEED_THREATS=[
+  {url:"paypal-secure-login.tk/verify",label:"phishing",score:97,time:"2m ago"},
+  {url:"amazon-update-billing.ml/signin",label:"phishing",score:94,time:"14m ago"},
+  {url:"secure-account-apple.xyz",label:"suspicious",score:52,time:"1h ago"},
+  {url:"microsoft-helpdesk.top",label:"suspicious",score:47,time:"2h ago"},
+  {url:"github.com/openai/gpt-4",label:"safe",score:3,time:"3h ago"},
+  {url:"192.168.1.1/banking/login.php",label:"phishing",score:91,time:"5h ago"},
+];
+
+const LIVE_POOL=[
+  {url:"chase-bank-verify.ml/signin",label:"phishing",score:89},
+  {url:"stackoverflow.com/q/123",label:"safe",score:2},
+  {url:"apple-id-confirm.xyz/reset",label:"suspicious",score:55},
+  {url:"netflix-billing.tk/update",label:"phishing",score:92},
+  {url:"docs.python.org/3/library",label:"safe",score:4},
+  {url:"instagram-verify.buzz/code",label:"phishing",score:86},
+];
+
+/* ── Sidebar ── */
+function Sidebar({active,onChange}){
+  const items=[
+    {id:"dashboard",icon:ICONS.grid,label:"Dashboard"},
+    {id:"emails",icon:ICONS.mail,label:"Emails",badge:3},
+    {id:"url",icon:ICONS.link,label:"URL Scanner"},
+    {id:"resources",icon:ICONS.book,label:"Resources"},
+  ];
+  return <aside style={{width:196,flexShrink:0,background:T.surface,borderRight:`1px solid ${T.border}`,display:"flex",flexDirection:"column",padding:"20px 0",height:"100%"}}>
+    <div style={{padding:"0 18px 18px",borderBottom:`1px solid ${T.border}`,marginBottom:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:5}}>
+        <div style={{width:28,height:28,background:T.accent,borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M7 1L13 4v4.5C13 11.5 7 14 7 14S1 11.5 1 8.5V4L7 1z" fill={T.bg}/>
+            <circle cx="7" cy="7.5" r="1.8" fill={T.accent}/>
+          </svg>
+        </div>
+        <span style={{fontFamily:"'DM Serif Display',serif",fontSize:15,color:T.text,letterSpacing:"-0.2px"}}>NeuroShield</span>
+      </div>
+      <div style={{fontSize:10.5,color:T.subtle,paddingLeft:37}}>Phishing detection · v1.0</div>
+    </div>
+    <nav style={{padding:"0 10px",flex:1}}>
+      {items.map(item=>(
+        <button key={item.id} onClick={()=>onChange(item.id)} style={{display:"flex",alignItems:"center",gap:9,width:"100%",padding:"8px 10px",borderRadius:7,border:"none",cursor:"pointer",background:active===item.id?T.accentDim:"transparent",color:active===item.id?T.accent:T.muted,fontSize:13,fontWeight:active===item.id?500:400,fontFamily:"'DM Sans',sans-serif",transition:"all 0.15s",marginBottom:2,textAlign:"left"}}>
+          <Icon path={item.icon} size={14} stroke="currentColor"/>
+          <span style={{flex:1}}>{item.label}</span>
+          {item.badge&&<span style={{background:T.dangerBg,color:T.danger,border:`0.5px solid rgba(224,82,82,0.25)`,fontSize:10,fontWeight:600,padding:"1px 5px",borderRadius:3}}>{item.badge}</span>}
+        </button>
+      ))}
+    </nav>
+    <div style={{padding:"14px 18px 0",borderTop:`1px solid ${T.border}`}}>
+      <div style={{display:"flex",alignItems:"center",gap:7}}>
+        <div style={{width:7,height:7,borderRadius:"50%",background:T.safe}}/>
+        <span style={{fontSize:11,color:T.muted}}>Model active · 98.4% acc</span>
+      </div>
+    </div>
+  </aside>;
+}
+
+/* ── Dashboard ── */
+function Dashboard(){
+  const [threats,setThreats]=useState(SEED_THREATS);
+  const [counts,setCounts]=useState({scanned:1284,blocked:47});
+  const tickRef=useRef(0);
+  useEffect(()=>{
+    const id=setInterval(()=>{
+      const pick=LIVE_POOL[tickRef.current%LIVE_POOL.length];
+      tickRef.current++;
+      setThreats(prev=>[{...pick,time:"just now"},...prev.slice(0,7)]);
+      setCounts(prev=>({scanned:prev.scanned+Math.floor(Math.random()*3+1),blocked:pick.label==="phishing"?prev.blocked+1:prev.blocked}));
+    },4000);
+    return()=>clearInterval(id);
+  },[]);
+  const spark=[42,58,34,71,89,44,61];
+  const maxS=Math.max(...spark);
+  return <div style={{padding:"20px 22px",overflowY:"auto",flex:1}} className="fade-in">
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:9,marginBottom:16}}>
+      {[{label:"URLs scanned",val:counts.scanned.toLocaleString(),sub:"↑ updating live"},{label:"Threats blocked",val:counts.blocked,sub:"this session"},{label:"Emails flagged",val:3,sub:"pending review"}].map(s=>(
+        <div key={s.label} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:"14px 15px"}}>
+          <div style={{fontSize:10.5,color:T.muted,marginBottom:6,letterSpacing:"0.05em",textTransform:"uppercase"}}>{s.label}</div>
+          <div style={{fontSize:23,fontWeight:500,fontFamily:"'DM Mono',monospace",color:T.text,letterSpacing:"-0.5px",transition:"all 0.3s"}}>{s.val}</div>
+          <div style={{fontSize:10.5,color:T.subtle,marginTop:3}}>{s.sub}</div>
+        </div>
+      ))}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 270px",gap:12}}>
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:16}}>
+        <div style={{fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:13}}>Live threat feed</div>
+        {threats.map((t,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:i<threats.length-1?`1px solid ${T.border}`:"none",opacity:Math.max(0.45,1-i*0.07),transition:"opacity 0.5s"}}>
+            <Badge label={t.label} variant={t.label}/>
+            <span style={{flex:1,fontFamily:"'DM Mono',monospace",fontSize:11.5,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.url}</span>
+            <span style={{fontSize:10.5,color:T.subtle,flexShrink:0}}>{t.time}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:15}}>
+          <div style={{fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:11}}>Weekly volume</div>
+          <div style={{display:"flex",alignItems:"flex-end",gap:4,height:50}}>
+            {spark.map((v,i)=>(
+              <div key={i} style={{flex:1,height:`${Math.round((v/maxS)*100)}%`,background:v===maxS?T.accent:T.subtle,borderRadius:"2px 2px 0 0"}}/>
+            ))}
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:5}}>
+            {["M","T","W","T","F","S","S"].map((d,i)=><span key={i} style={{fontSize:9,color:T.subtle}}>{d}</span>)}
+          </div>
+        </div>
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:15}}>
+          <div style={{fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:11}}>Detection split</div>
+          {[{l:"Safe",p:78,c:T.safe},{l:"Phishing",p:13,c:T.danger},{l:"Suspicious",p:9,c:T.warn}].map(row=>(
+            <div key={row.l} style={{marginBottom:9}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:11.5,color:T.muted}}>{row.l}</span>
+                <span style={{fontSize:11.5,fontFamily:"'DM Mono',monospace",color:T.muted}}>{row.p}%</span>
+              </div>
+              <MiniBar value={row.p} color={row.c}/>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
+/* ── Email Page ── */
+function EmailPage(){
+  const [text,setText]=useState("");
+  const [result,setResult]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [history,setHistory]=useState([]);
+  const [tab,setTab]=useState("compose");
+  const [dragging,setDragging]=useState(false);
+  const fileRef=useRef();
+
+  const analyse=useCallback(()=>{
+    if(!text.trim())return;
+    setLoading(true);setResult(null);
+    setTimeout(()=>{
+      const r=analyseEmailText(text);
+      setResult(r);
+      setHistory(prev=>[{from:r.from||"Unknown",subject:r.subject||"(No subject)",label:r.label,score:r.finalScore,time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}),raw:text},...prev.slice(0,19)]);
+      setLoading(false);
+    },700);
+  },[text]);
+
+  const scoreColor=result?(result.finalScore>=65?T.danger:result.finalScore>=35?T.warn:T.safe):T.muted;
+
+  const readFile=f=>{const r=new FileReader();r.onload=e=>setText(e.target.result);r.readAsText(f);};
+
+  return <div style={{padding:"20px 22px",overflowY:"auto",flex:1}} className="fade-in">
+    <div style={{display:"flex",gap:4,marginBottom:15,background:T.card,borderRadius:7,padding:3,width:"fit-content"}}>
+      {["compose","history"].map(t=>(
+        <button key={t} onClick={()=>setTab(t)} style={{padding:"5px 14px",borderRadius:5,border:tab===t?`1px solid ${T.border}`:"none",background:tab===t?T.surface:"transparent",color:tab===t?T.text:T.muted,fontSize:12.5,fontWeight:tab===t?500:400,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",transition:"all 0.15s"}}>
+          {t==="compose"?"Paste email":`History${history.length?` (${history.length})`:""}`}
+        </button>
+      ))}
+    </div>
+
+    {tab==="compose"&&<div style={{display:"grid",gridTemplateColumns:result?"1fr 1fr":"1fr",gap:14}}>
+      <div>
+        <div
+          onDragOver={e=>{e.preventDefault();setDragging(true);}}
+          onDragLeave={()=>setDragging(false)}
+          onDrop={e=>{e.preventDefault();setDragging(false);const f=e.dataTransfer.files[0];if(f)readFile(f);}}
+          onClick={()=>fileRef.current.click()}
+          style={{border:`1.5px dashed ${dragging?T.accent:T.border}`,borderRadius:10,padding:"16px",textAlign:"center",background:dragging?T.accentDim:T.card,cursor:"pointer",marginBottom:11,transition:"all 0.15s"}}>
+          <Icon path={ICONS.upload} size={16} stroke={T.muted}/>
+          <div style={{fontSize:12.5,color:T.muted,marginTop:7}}>Drop .eml / .msg file or <span style={{color:T.accent}}>browse</span></div>
+          <input ref={fileRef} type="file" accept=".eml,.msg,.txt" style={{display:"none"}} onChange={e=>{if(e.target.files[0])readFile(e.target.files[0]);}}/>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:9}}>
+          <div style={{flex:1,height:"0.5px",background:T.border}}/>
+          <span style={{fontSize:10.5,color:T.subtle,whiteSpace:"nowrap"}}>or paste raw email text</span>
+          <div style={{flex:1,height:"0.5px",background:T.border}}/>
+        </div>
+        <textarea value={text} onChange={e=>setText(e.target.value)}
+          placeholder={"From: sender@domain.com\nTo: you@company.com\nSubject: …\n\n(Paste full forwarded email body here)"}
+          style={{width:"100%",minHeight:210,fontFamily:"'DM Mono',monospace",fontSize:11.5,lineHeight:1.7,padding:13,borderRadius:9,border:`1px solid ${T.border}`,background:T.card,color:T.text,resize:"vertical",outline:"none",transition:"border-color 0.15s"}}
+          onFocus={e=>e.target.style.borderColor=T.borderMd}
+          onBlur={e=>e.target.style.borderColor=T.border}/>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:9}}>
+          <div style={{display:"flex",gap:5}}>
+            {["Phishing demo","Safe demo"].map((d,i)=>(
+              <button key={d} onClick={()=>{setText(DEMO_EMAILS[i]);setResult(null);}} style={{fontSize:11.5,color:T.muted,background:"transparent",border:`1px solid ${T.border}`,borderRadius:6,padding:"5px 10px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",transition:"all 0.15s"}}
+                onMouseEnter={e=>{e.target.style.borderColor=T.borderMd;e.target.style.color=T.text;}}
+                onMouseLeave={e=>{e.target.style.borderColor=T.border;e.target.style.color=T.muted;}}>{d}</button>
+            ))}
+          </div>
+          <button onClick={analyse} disabled={!text.trim()||loading} style={{background:text.trim()&&!loading?T.accent:T.subtle,color:T.bg,border:"none",borderRadius:7,padding:"7px 18px",fontSize:13,fontWeight:600,cursor:text.trim()&&!loading?"pointer":"not-allowed",fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:7,transition:"background 0.2s"}}>
+            {loading&&<Spinner/>}Analyse
+          </button>
+        </div>
+      </div>
+
+      {result&&<div className="fade-in" style={{display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+          <div style={{padding:"11px 15px",borderBottom:`1px solid ${T.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+            <div style={{minWidth:0,flex:1}}>
+              <div style={{fontSize:13,fontWeight:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{result.subject||"(No subject)"}</div>
+              <div style={{fontSize:11,color:T.muted,marginTop:2,fontFamily:"'DM Mono',monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{result.from||"Unknown sender"}</div>
+            </div>
+            <Badge label={result.label} variant={result.label}/>
+          </div>
+          <div style={{padding:15}}>
+            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:15}}>
+              <ScoreRing score={result.finalScore} size={72}/>
+              <div>
+                <div style={{fontSize:20,fontWeight:500,color:scoreColor,fontFamily:"'DM Mono',monospace",letterSpacing:"-0.5px"}}>{result.finalScore}<span style={{fontSize:12,color:T.muted}}>/100</span></div>
+                <div style={{fontSize:11.5,color:T.muted,marginTop:4,lineHeight:1.5,maxWidth:170}}>
+                  {result.label==="phishing"?"High phishing risk — do not click any links.":result.label==="suspicious"?"Verify sender before acting.":"Appears safe. Stay vigilant."}
+                </div>
+              </div>
+            </div>
+            <div style={{fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:9}}>Score breakdown</div>
+            {[{l:"Sender domain",v:Math.round(result.senderScore*0.35)},{l:"Subject tone",v:result.subjectScore},{l:"Body content",v:result.bodyScore},{l:"Link analysis",v:result.urlContrib}].map(row=>(
+              <div key={row.l} style={{display:"flex",alignItems:"center",gap:9,marginBottom:8}}>
+                <span style={{fontSize:11.5,color:T.muted,width:105,flexShrink:0}}>{row.l}</span>
+                <MiniBar value={row.v} color={row.v>=20?scoreColor:T.safe}/>
+                <span style={{fontSize:11,fontFamily:"'DM Mono',monospace",color:T.muted,width:22,textAlign:"right"}}>{row.v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        {result.urlResults.length>0&&<div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:15}}>
+          <div style={{fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Links detected ({result.urlResults.length})</div>
+          {result.urlResults.map((r,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:i<result.urlResults.length-1?`1px solid ${T.border}`:"none"}}>
+              <span style={{fontFamily:"'DM Mono',monospace",fontSize:10.5,color:T.info,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.url}</span>
+              <span style={{fontSize:10.5,fontFamily:"'DM Mono',monospace",color:T.muted,flexShrink:0}}>{r.score}</span>
+              <Badge label={r.label} variant={r.label}/>
+            </div>
+          ))}
+        </div>}
+      </div>}
+    </div>}
+
+    {tab==="history"&&<div className="fade-in">
+      {history.length===0?<div style={{textAlign:"center",padding:"44px 24px",color:T.muted}}>
+        <Icon path={ICONS.mail} size={28} stroke={T.subtle}/>
+        <div style={{fontSize:13.5,fontWeight:500,color:T.text,marginTop:12,marginBottom:4}}>No emails analysed yet</div>
+        <div style={{fontSize:12}}>Paste an email and run analysis to see it here</div>
+      </div>:history.map((h,i)=>(
+        <div key={i} onClick={()=>{setText(h.raw);setTab("compose");}}
+          style={{display:"flex",alignItems:"center",gap:12,padding:"10px 13px",background:T.card,border:`1px solid ${T.border}`,borderRadius:8,cursor:"pointer",marginBottom:6,transition:"border-color 0.15s"}}
+          onMouseEnter={e=>e.currentTarget.style.borderColor=T.borderMd}
+          onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12.5,fontWeight:500,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.from}</div>
+            <div style={{fontSize:11.5,color:T.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h.subject}</div>
+          </div>
+          <Badge label={`${h.score}/100`} variant={h.label}/>
+          <span style={{fontSize:10.5,color:T.subtle,flexShrink:0}}>{h.time}</span>
+        </div>
+      ))}
+    </div>}
+  </div>;
+}
+
+/* ── URL Scanner ── */
+function URLPage(){
+  const [input,setInput]=useState("");
+  const [result,setResult]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [scanned,setScanned]=useState([]);
+
+  const scan=()=>{
+    if(!input.trim())return;
+    setLoading(true);
+    setTimeout(()=>{
+      const r=analyseUrl(input.trim());
+      setResult({...r,url:input.trim()});
+      setScanned(prev=>[{url:input.trim(),...r,time:"just now"},...prev.slice(0,9)]);
+      setLoading(false);
+    },500);
+  };
+
+  const scoreColor=result?(result.score>=65?T.danger:result.score>=35?T.warn:T.safe):T.muted;
+  const demos=["http://paypal-login.tk/verify?user=john","https://www.github.com","http://192.168.1.1/banking"];
+
+  return <div style={{padding:"20px 22px",overflowY:"auto",flex:1}} className="fade-in">
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:16,marginBottom:14}}>
+      <div style={{fontSize:10.5,color:T.muted,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.05em"}}>Enter URL to scan</div>
+      <div style={{display:"flex",gap:8}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&scan()} placeholder="https://example.com/path?query=value"
+          style={{flex:1,fontFamily:"'DM Mono',monospace",fontSize:12.5,padding:"9px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:T.bg,color:T.text,outline:"none",transition:"border-color 0.15s"}}
+          onFocus={e=>e.target.style.borderColor=T.borderMd}
+          onBlur={e=>e.target.style.borderColor=T.border}/>
+        <button onClick={scan} disabled={!input.trim()||loading} style={{background:input.trim()&&!loading?T.accent:T.subtle,color:T.bg,border:"none",borderRadius:8,padding:"9px 18px",fontSize:13,fontWeight:600,cursor:input.trim()&&!loading?"pointer":"not-allowed",fontFamily:"'DM Sans',sans-serif",display:"flex",alignItems:"center",gap:6,transition:"background 0.2s",flexShrink:0}}>
+          {loading?<Spinner/>:<Icon path={ICONS.eye} size={13} stroke={T.bg} sw={1.8}/>}Scan
+        </button>
+      </div>
+      <div style={{display:"flex",gap:5,marginTop:9,flexWrap:"wrap"}}>
+        {demos.map(u=><button key={u} onClick={()=>setInput(u)} style={{fontSize:10.5,color:T.subtle,background:"transparent",border:`1px solid ${T.border}`,borderRadius:5,padding:"3px 8px",cursor:"pointer",fontFamily:"'DM Mono',monospace",transition:"color 0.12s"}}
+          onMouseEnter={e=>e.target.style.color=T.muted}
+          onMouseLeave={e=>e.target.style.color=T.subtle}>{u.length>42?u.slice(0,42)+"…":u}</button>)}
+      </div>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:result?"1fr 1fr":"1fr",gap:12}}>
+      {result&&<div className="fade-in" style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,overflow:"hidden"}}>
+        <div style={{padding:"11px 15px",borderBottom:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:T.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{result.hostname}</span>
+          <Badge label={result.label} variant={result.label}/>
+        </div>
+        <div style={{padding:15}}>
+          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:15}}>
+            <ScoreRing score={result.score} size={72}/>
+            <div>
+              <div style={{fontSize:20,fontWeight:500,color:scoreColor,fontFamily:"'DM Mono',monospace"}}>{result.score}<span style={{fontSize:12,color:T.muted}}>/100</span></div>
+              <div style={{fontSize:11.5,color:T.muted,marginTop:3}}>Risk score</div>
+            </div>
+          </div>
+          <div style={{fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:9}}>Signals</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+            {result.indicators.slice(0,6).map((ind,i)=>(
+              <div key={i} style={{padding:"7px 10px",borderRadius:7,border:`1px solid ${T.border}`,background:ind.danger?T.dangerBg:T.safeBg}}>
+                <div style={{fontSize:11,fontWeight:500,color:ind.danger?T.danger:T.safe}}>{ind.name}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>}
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:15}}>
+        <div style={{fontSize:10.5,color:T.muted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:11}}>Scan history</div>
+        {scanned.length===0?<div style={{fontSize:12,color:T.subtle,padding:"18px 0",textAlign:"center"}}>No scans yet this session</div>:scanned.map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:i<scanned.length-1?`1px solid ${T.border}`:"none"}}>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:T.muted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.url}</span>
+            <Badge label={`${s.score}`} variant={s.label}/>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>;
+}
+
+/* ── Resources ── */
+function ResourcesPage() {
+  const [checked, setChecked] = React.useState({});
+  
+  // Internal theme for reliability
+  const theme = {
+    card: "#1a1918",
+    border: "rgba(255,255,255,0.07)",
+    borderMd: "rgba(255,255,255,0.13)",
+    text: "#f0ede8",
+    muted: "#7a776f",
+    subtle: "#4a4843",
+    accent: "#e8d5a3",
+    accentDim: "rgba(232,213,163,0.15)",
+    danger: "#e05252",
+    warn: "#d4883a",
+    safe: "#5aab6e",
+    info: "#5a8fd4",
+  };
+
+  const resourceLib = [
+    {
+      title: "Have I Been Pwned",
+      tag: "Data Breaches",
+      desc: "The gold standard for checking if your email, phone, or passwords have been exposed in a major corporate data leak.",
+      url: "https://haveibeenpwned.com",
+      color: theme.danger
+    },
+    {
+      title: "PhishTank",
+      tag: "Live Intelligence",
+      desc: "A collaborative clearinghouse where real users report and verify phishing URLs in real-time.",
+      url: "https://phishtank.org",
+      color: theme.warn
+    },
+    {
+      title: "Google Transparency Report",
+      tag: "Global Monitoring",
+      desc: "Real-time statistics on the safety of the web and how many dangerous sites are detected daily.",
+      url: "https://transparencyreport.google.com/safe-browsing/overview",
+      color: theme.info
+    },
+    {
+      title: "APWG Resources",
+      tag: "Global Alliance",
+      desc: "The Anti-Phishing Working Group is the international coalition unifying the global response to cybercrime.",
+      url: "https://apwg.org",
+      color: theme.safe
+    },
+    {
+      title: "SANS NewsBites",
+      tag: "Threat Intel",
+      desc: "A high-level executive summary of the most important cybersecurity news. Essential for staying ahead of exploits.",
+      url: "https://www.sans.org/newsletters/newsbites/",
+      color: theme.accent
+    },
+    {
+      title: "MFA Fatigue Research",
+      tag: "2026 Trends",
+      desc: "Deep dive into 'Push-Notification Spam'—the 2026 evolution of phishing where attackers bypass 2FA.",
+      url: "https://www.cloudsek.com/knowledge-base/phishing-techniques",
+      color: theme.danger
+    }
+  ];
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: "24px", background: "#0e0e0d" }}>
+      {/* Hero Section */}
+      <div style={{ 
+        background: "#141413", 
+        border: `1px solid ${theme.borderMd}`, 
+        borderRadius: 16, 
+        padding: "30px", 
+        marginBottom: "24px",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.3)"
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <div style={{ width: 3, height: 24, background: theme.accent, borderRadius: 2 }} />
+          <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: "24px", color: theme.text }}>Cyber-Defense Intelligence Hub</h2>
+        </div>
+        <p style={{ fontSize: "14px", color: theme.muted, lineHeight: "1.7", maxWidth: "700px" }}>
+          In 2026, phishing has transcended simple emails. NeuroShield is your first line of defense, but education is the ultimate patch for human-layer vulnerabilities.
+        </p>
+      </div>
+
+      <div style={{ fontSize: "10px", color: theme.subtle, textTransform: "uppercase", letterSpacing: "0.15em", marginBottom: "16px", fontWeight: 600 }}>
+        Knowledge Library & Trusted Resources
+      </div>
+
+      {/* Grid of Resource Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: "16px" }}>
+        {resourceLib.map((res, i) => (
+          <div 
+            key={i}
+            onClick={() => window.open(res.url, '_blank')}
+            style={{ 
+              background: theme.card, 
+              border: `1px solid ${theme.border}`, 
+              borderRadius: 12, 
+              padding: "20px", 
+              cursor: "pointer", 
+              transition: "all 0.2s ease",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "space-between",
+              minHeight: "160px"
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = res.color;
+              e.currentTarget.style.transform = "translateY(-4px)";
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = theme.border;
+              e.currentTarget.style.transform = "translateY(0)";
+            }}
+          >
+            <div>
+              <div style={{ marginBottom: "12px" }}>
+                <span style={{ 
+                  fontSize: "10px", 
+                  padding: "3px 8px", 
+                  borderRadius: 4, 
+                  background: `${res.color}20`, 
+                  color: res.color, 
+                  fontWeight: 600,
+                  textTransform: "uppercase" 
+                }}>{res.tag}</span>
+              </div>
+              <h3 style={{ fontSize: "17px", fontWeight: 500, color: theme.text, marginBottom: "8px" }}>{res.title}</h3>
+              <p style={{ fontSize: "12.5px", color: theme.muted, lineHeight: "1.6" }}>{res.desc}</p>
+            </div>
+            
+            <div style={{ marginTop: "16px", display: "flex", alignItems: "center", gap: 6, fontSize: "11px", color: res.color, fontWeight: 500 }}>
+              Launch Resource →
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ height: "40px" }} />
+    </div>
+  );
+}
+/* ── Root ── */
+function App(){
+  const [page,setPage]=useState("dashboard");
+  const titles={
+    dashboard:{t:"Dashboard",s:"Live threat monitoring"},
+    emails:{t:"Email analysis",s:"Paste a forwarded email to scan"},
+    url:{t:"URL Scanner",s:"Instant phishing analysis"},
+    resources:{t:"Resources",s:"Datasets, guides & checklists"},
+  };
+  const {t,s}=titles[page];
+  return <div style={{display:"flex",height:"100vh",fontFamily:"'DM Sans',sans-serif",background:T.bg,color:T.text,overflow:"hidden"}}>
+    <Sidebar active={page} onChange={setPage}/>
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{padding:"14px 22px",borderBottom:`1px solid ${T.border}`,background:T.surface,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+        <div>
+          <div style={{fontSize:15,fontWeight:500,color:T.text}}>{t}</div>
+          <div style={{fontSize:11,color:T.muted,marginTop:1}}>{s}</div>
+        </div>
+        <span style={{fontSize:11,color:T.subtle,fontFamily:"'DM Mono',monospace"}}>{new Date().toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}</span>
+      </div>
+      {page==="dashboard"&&<Dashboard/>}
+      {page==="emails"&&<EmailPage/>}
+      {page==="url"&&<URLPage/>}
+      {page==="resources"&&<ResourcesPage/>}
+    </div>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
