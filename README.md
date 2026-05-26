@@ -4,6 +4,10 @@ Real-time phishing detection for URLs and emails.
 Stacked ML ensemble trained on two Kaggle datasets.
 
 ---
+## Why NeuroShield?
+I built this to move beyond static email filters. NeuroShield correlates email content with URL behavior, using a stacked ensemble to mitigate the weaknesses of individual algorithms against modern adversarial tactics like link obfuscation and brand impersonation.
+
+---
 
 ## Project structure
 
@@ -23,6 +27,11 @@ neuroshield/
     ├── email_model.pkl
     └── email_meta.json
 ```
+## Project Preview
+
+| Dashboard | Email Analysis |
+| :--- | :--- |
+| ![Dashboard](project_images/Dashboard.png) | ![Email Scanner](project_images/Email%20Scanner.png) |
 
 ---
 
@@ -207,3 +216,9 @@ All endpoints return JSON with CORS headers set to `*` (restrict in production).
 |----------|---------|-------------|
 | `KAGGLE_CONFIG_DIR` | `~/.kaggle` | Path to directory containing `kaggle.json` |
 | `NEUROSHIELD_MODELS_DIR` | `./models` | Where trained models are saved |
+
+---
+
+## Future Roadmap
+- **Agentic Orchestration:** Integrate LLM-driven autonomous "sandbox" visits for real-time verification of detected threats.
+- **Human-in-the-Loop:** Add feedback endpoints for users to report false-positives/negatives to refine model weights.
