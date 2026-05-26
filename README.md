@@ -29,11 +29,18 @@ neuroshield/
 ```
 ## Project Preview
 
-| Dashboard | Email Analysis |
-| :--- | :--- |
-| ![Dashboard](project_images/Dashboard.png) | ![Email Scanner](project_images/Email%20Scanner.png) |
-
----
+<div align="center">
+  <table>
+    <tr>
+      <td align="center"><b>Dashboard</b><br><img src="project_images/Dashboard.png" width="400"></td>
+      <td align="center"><b>Email Analysis</b><br><img src="project_images/Email_Scanner.png" width="400"></td>
+    </tr>
+    <tr>
+      <td align="center"><b>URL Analysis</b><br><img src="project_images/URL_Scanner.png" width="400"></td>
+      <td align="center"><b>Resources</b><br><img src="project_images/Resource_Page.png" width="400"></td>
+    </tr>
+  </table>
+</div>
 
 ## Datasets
 
