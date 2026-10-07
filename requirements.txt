@@ -1,0 +1,39 @@
+# NeuroShield — Python dependencies
+# Install: pip install -r requirements.txt
+# Tested on Python 3.12.3.
+
+# ── API framework ──────────────────────────────────────────────────────────
+fastapi==0.141.1
+uvicorn[standard]==0.29.0
+pydantic==2.13.5
+python-multipart==0.0.9
+
+# ── ML core ───────────────────────────────────────────────────────────────
+# NOTE: scikit-learn is pinned deliberately (not bumped like the rest).
+# The trained .pkl model files in models/ were pickled with this exact
+# version — loading them with a different sklearn (older OR newer) can
+# throw AttributeError on internal estimator internals, or silently
+# behave differently. If you ever bump this, retrain both models
+# (`python train.py`) rather than reusing the committed .pkl files.
+scikit-learn==1.4.2
+numpy==2.4.4
+pandas==3.0.2
+joblib==1.5.3
+
+# ── NLP ───────────────────────────────────────────────────────────────────
+nltk==3.10.3
+
+# ── Dataset loading ───────────────────────────────────────────────────────
+kaggle==1.6.14          # kaggle API — needs ~/.kaggle/kaggle.json
+                        # (not used to fetch the merged email_v2 corpus —
+                        # see the note in data_loader.load_email_dataset_v2)
+
+# ── Utilities ─────────────────────────────────────────────────────────────
+python-dotenv==1.0.1
+tldextract==5.3.2
+requests==2.33.1
+aiofiles==23.2.1
+
+# ── Dev / test ────────────────────────────────────────────────────────────
+pytest==9.1.1
+httpx==0.28.1           # async test client for FastAPI
